@@ -1,0 +1,38 @@
+{
+  "name": "@lomehong/agent-memory-plugin",
+  "version": "1.0.0",
+  "description": "OpenClaw memory plugin powered by agent-memory (self-hosted)",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc || true",
+    "test": "echo done"
+  },
+  "dependencies": {
+    "@sinclair/typebox": "^0.34.48",
+    "openclaw": "^2026.4.2"
+  },
+  "keywords": [
+    "openclaw",
+    "plugin",
+    "memory",
+    "agent-memory"
+  ],
+  "openclaw": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "clawdbot": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "moltbot": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "author": "lomehong",
+  "license": "MIT"
+}

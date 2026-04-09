@@ -1,0 +1,50 @@
+{
+  "id": "agent-memory-plugin",
+  "description": "Self-hosted AI agent memory system with auto-classification, dedup, and TTL lifecycle",
+  "homepage": "https://github.com/lomehong/agent-memory",
+  "kind": "memory",
+  "uiHints": {
+    "host": {
+      "label": "Agent-Memory Server URL",
+      "placeholder": "http://localhost:8101",
+      "help": "URL of the running agent-memory server"
+    },
+    "apiKey": {
+      "label": "API Key",
+      "sensitive": true,
+      "placeholder": "dev-api-key-001",
+      "help": "API key for authenticating with agent-memory server"
+    },
+    "userId": {
+      "label": "Default User ID",
+      "placeholder": "default",
+      "help": "User ID for scoping memories"
+    },
+    "autoRecall": {
+      "label": "Auto-Recall",
+      "help": "Automatically inject relevant memories before each agent turn"
+    },
+    "autoCapture": {
+      "label": "Auto-Capture",
+      "help": "Automatically store conversation context after each agent turn"
+    },
+    "topK": {
+      "label": "Top K Results",
+      "placeholder": "5",
+      "help": "Maximum number of memories to retrieve"
+    }
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "host": { "type": "string" },
+      "apiKey": { "type": "string" },
+      "userId": { "type": "string" },
+      "autoRecall": { "type": "boolean" },
+      "autoCapture": { "type": "boolean" },
+      "topK": { "type": "number" }
+    },
+    "required": ["host", "apiKey"]
+  }
+}
