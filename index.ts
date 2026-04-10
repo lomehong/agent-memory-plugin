@@ -901,88 +901,200 @@ const agentMemoryPlugin = {
       });
     }
 
-    // Auto-capture: extract and store key facts after agent ends
+    // ==========================================================================
+    // Auto-capture: intelligent extraction and storage after agent ends
+    // ==========================================================================
     if (cfg.autoCapture) {
+      // --- Noise Detection ---
+      const NOISE_PATTERNS: RegExp[] = [
+        // Feishu/Slack metadata wrappers
+        /^Conversation info/i,
+        /^Sender \(/i,
+        /^\[message_id:/i,
+        // JSON blocks (code fences or bare objects)
+        /^```(?:json|yaml|xml)?\s*$/,
+        /^\s*\{\s*"/,
+        /^\s*\[\s*\{/, // JSON arrays
+        // Pure JSON key-value lines
+        /^\s*"[^"]+"\s*:/,
+        // System-injected memory context
+        /<relevant-memories>/,
+        /<\/relevant-memories>/,
+        /The following memories? (may be )?relevant/i,
+        // Heartbeat / system prompts disguised as user messages
+        /HEARTBEAT\.md/i,
+        /Read HEARTBEAT\.md/i,
+        /HEARTBEAT_OK/i,
+        /heartbeat check/i,
+        /If nothing needs attention/i,
+        /每日汇报/i,
+        /daily report/i,
+        // OpenClaw system prompts
+        /relevant-memories 系统注入/i,
+        // Tool call artifacts
+        /^\[.*\]$/,
+        // Empty or near-empty content
+        /^\s*$/,
+        // Single word or very short commands
+        /^\s*[\u4e00-\u9fff]{1,3}\s*$/, // 1-3 Chinese chars only
+        /^\s*[a-zA-Z]{1,4}\s*$/, // 1-4 English letters only
+      ];
+
+      function isNoise(text: string): boolean {
+        // Fast check: if most lines are JSON/metadata, the whole block is noise
+        const lines = text.split("\n").filter((l) => l.trim().length > 0);
+        if (lines.length === 0) return true;
+
+        let noiseCount = 0;
+        for (const line of lines) {
+          const trimmed = line.trim();
+          for (const pattern of NOISE_PATTERNS) {
+            if (pattern.test(trimmed)) {
+              noiseCount++;
+              break;
+            }
+          }
+        }
+
+        // If >60% of lines match noise patterns, treat the whole block as noise
+        if (lines.length >= 2 && noiseCount / lines.length > 0.6) return true;
+        // Single line that matches any noise pattern
+        if (lines.length === 1 && noiseCount > 0) return true;
+
+        return false;
+      }
+
+      // --- Content Extraction ---
+      function extractUserText(msg: unknown): string {
+        if (!msg || typeof msg !== "object") return "";
+        const msgObj = msg as Record<string, unknown>;
+        if (msgObj.role !== "user") return "";
+
+        let text = "";
+        const content = msgObj.content;
+        if (typeof content === "string") {
+          text = content;
+        } else if (Array.isArray(content)) {
+          for (const block of content) {
+            if (
+              block &&
+              typeof block === "object" &&
+              "type" in block &&
+              (block as Record<string, unknown>).type === "text"
+            ) {
+              text += (block as Record<string, unknown>).text + " ";
+            }
+          }
+        }
+        return text.trim();
+      }
+
+      function cleanText(text: string): string {
+        return text
+          .split("\n")
+          .filter((line) => {
+            const trimmed = line.trim();
+            if (!trimmed) return false;
+            for (const pattern of NOISE_PATTERNS) {
+              if (pattern.test(trimmed)) return false;
+            }
+            return true;
+          })
+          .join("\n")
+          .trim();
+      }
+
+      // --- Value Detection ---
+      // Heuristics to determine if a message contains memorable information
+      function hasMemorableContent(text: string): boolean {
+        if (text.length < 15) return false;
+        if (text.length > 2000) return false; // Too long, likely code/log dump
+
+        // Positive signals: contains facts, decisions, preferences, context
+        const positivePatterns = [
+          // Factual statements with specifics
+          /\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/, // IP addresses
+          /https?:\/\//, // URLs
+          /(?:密码|password|key|token|secret|apiKey|api_key)\s*[:：]/i,
+          /(?:端口|port)\s*[:：]?\s*\d+/i,
+          /(?:服务器|server|部署|deploy)\s/i,
+          /(?:项目|project|仓库|repo)\s/i,
+          /(?:路径|path|目录|directory)\s*[:：]/i,
+          /(?:配置|config|设置|setting)\s/i,
+          /(?:账号|account|用户名|username)\s/i,
+          /(?:规则|rule|原则|principle|规范|convention)\s/i,
+          /(?:记住|remember|note|备忘|提醒)\s/i,
+          /(?:不要|禁止|never|don'?t|avoid)\s/i,
+          /(?:喜欢|偏好|prefer|习惯)\s/i,
+          /(?:完成|done|deployed|deployed|已上线|已发布)\s/i,
+          /(?:GitHub|GitLab|gitee)\s/i,
+          /(?:Docker|docker-compose|K8s|kubernetes)\s/i,
+          // Questions that reveal intent/context
+          /(?:是什么|在哪里|怎么|为什么|where|what|how|why)\s/i,
+          // Task descriptions
+          /(?:帮我|请|需要|want|need|please)\s/i,
+          // Statements with specific nouns
+          /(?:功能|feature|模块|module|组件|component)\s/i,
+          // Contains Chinese text (likely substantive content)
+          /[\u4e00-\u9fff]{10,}/, // 10+ Chinese chars
+        ];
+
+        let score = 0;
+        for (const pattern of positivePatterns) {
+          if (pattern.test(text)) score++;
+        }
+
+        // Need at least 1 positive signal, or be a reasonably long substantive text
+        return score >= 1 || text.length >= 50;
+      }
+
+      // --- Main Capture Logic ---
       api.on("agent_end", async (event) => {
         if (!event.success || !event.messages || event.messages.length === 0)
           return;
 
         try {
-          // Extract meaningful text from user messages
-          const userTexts: string[] = [];
-          for (const msg of event.messages.slice(-10)) {
-            if (!msg || typeof msg !== "object") continue;
-            const msgObj = msg as Record<string, unknown>;
-            if (msgObj.role !== "user") continue;
+          // Collect user messages from recent turns
+          const recentMessages = event.messages.slice(-10);
+          const candidates: string[] = [];
 
-            let text = "";
-            const content = msgObj.content;
-            if (typeof content === "string") {
-              text = content;
-            } else if (Array.isArray(content)) {
-              for (const block of content) {
-                if (
-                  block &&
-                  typeof block === "object" &&
-                  "type" in block &&
-                  (block as Record<string, unknown>).type === "text"
-                ) {
-                  text += (block as Record<string, unknown>).text + " ";
-                }
-              }
-            }
+          for (const msg of recentMessages) {
+            const raw = extractUserText(msg);
+            if (!raw) continue;
 
-            if (!text || text.length < 5) continue;
+            const cleaned = cleanText(raw);
+            if (!cleaned) continue;
+            if (isNoise(cleaned)) continue;
+            if (!hasMemorableContent(cleaned)) continue;
 
-            // Filter out noise: metadata JSON blocks, system prompts, memory context
-            const cleaned = text
-              .split("\n")
-              .filter((line) => {
-                const trimmed = line.trim();
-                if (!trimmed) return false;
-                // Skip metadata blocks (conversation info, sender, message_id)
-                if (
-                  trimmed.startsWith("Conversation info") ||
-                  trimmed.startsWith("Sender (") ||
-                  trimmed.startsWith("[message_id:")
-                )
-                  return false;
-                // Skip JSON metadata blocks
-                if (trimmed.startsWith("```json")) return false;
-                if (trimmed.startsWith("```")) return false;
-                if (/^\s*\{.*\}$/.test(trimmed)) return false;
-                // Skip system-injected memory context
-                if (trimmed.includes("<relevant-memories>")) return false;
-                if (trimmed.includes("</relevant-memories>")) return false;
-                // Skip lines that are pure JSON key-value pairs
-                if (/^\s*"[^"]+"\s*:/.test(trimmed)) return false;
-                // Skip lines that are just labels like [message_id: ...]
-                if (/^\[message_id:\s/.test(trimmed)) return false;
-                return true;
-              })
-              .join("\n")
-              .trim();
-
-            if (cleaned.length >= 5) {
-              userTexts.push(cleaned);
-            }
+            candidates.push(cleaned);
           }
 
-          // Store cleaned user messages
+          // Deduplicate within batch (similar consecutive messages)
+          const unique: string[] = [];
+          for (const c of candidates) {
+            const isDup = unique.some(
+              (u) =>
+                u === c ||
+                (u.length > 20 && c.includes(u.substring(0, Math.floor(u.length * 0.8)))),
+            );
+            if (!isDup) unique.push(c);
+          }
+
+          // Store
           let captured = 0;
-          for (const msg of userTexts) {
-            if (msg.length < 10) continue;
+          for (const text of unique) {
             try {
-              await client.store(msg);
+              await client.store(text);
               captured++;
             } catch {
-              // Dedup is expected for repeated messages
+              // Dedup from server side is expected
             }
           }
 
           if (captured > 0) {
             api.logger.info(
-              `agent-memory-plugin: auto-captured ${captured} memories`,
+              `agent-memory-plugin: auto-captured ${captured}/${unique.length} memories (filtered ${candidates.length - unique.length} dupes, ${recentMessages.length - candidates.length} noise)`,
             );
           }
         } catch (err) {
