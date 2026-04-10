@@ -1021,7 +1021,6 @@ const agentMemoryPlugin = {
         if (rawText.startsWith("{") && rawText.includes("message_id")) return "";
 
         let text = "";
-        const content = msgObj.content;
         if (typeof content === "string") {
           text = content;
         } else if (Array.isArray(content)) {
