@@ -951,6 +951,17 @@ const agentMemoryPlugin = {
         /^\s*\[\s*\{/, // JSON arrays
         // Pure JSON key-value lines
         /^\s*"[^"]+"\s*:/,
+        // Empty JSON objects (Feishu metadata artifact)
+        /^\{\s*\}\s*$/,
+        // System notifications (appear as user role in OpenClaw)
+        /^System:\s/i,
+        /^\[\w{3} \d{4}-\d{2}-\d{2}/, // [Fri 2026-04-10 22:20 GMT+8]
+        // Exec/async command notifications
+        /async command.*completed/i,
+        /Exec failed/i,
+        /Exec completed/i,
+        // Time stamps
+        /^Current time:/i,
         // System-injected memory context
         /<relevant-memories>/,
         /<\/relevant-memories>/,
@@ -1003,6 +1014,11 @@ const agentMemoryPlugin = {
         if (!msg || typeof msg !== "object") return "";
         const msgObj = msg as Record<string, unknown>;
         if (msgObj.role !== "user") return "";
+        // Skip messages that are clearly system artifacts even if role=user
+        const content = msgObj.content;
+        const rawText = typeof content === "string" ? content : "";
+        if (rawText.startsWith("System:") || rawText.startsWith("[")) return "";
+        if (rawText.startsWith("{") && rawText.includes("message_id")) return "";
 
         let text = "";
         const content = msgObj.content;
