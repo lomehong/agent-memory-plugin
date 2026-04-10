@@ -1,6 +1,6 @@
 {
   "id": "agent-memory-plugin",
-  "description": "Self-hosted AI agent memory system with auto-classification, dedup, and TTL lifecycle",
+  "description": "Self-hosted AI agent memory system with auto-classification, agent isolation, dedup, TTL lifecycle, and intelligent autoCapture",
   "homepage": "https://github.com/lomehong/agent-memory",
   "kind": "memory",
   "uiHints": {

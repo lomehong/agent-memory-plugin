@@ -7,8 +7,12 @@
  * - TTL lifecycle management (active → degraded → archived)
  * - Multi-dimensional scoring (similarity, priority, access, category, urgency)
  * - Visibility control (private/team/user)
+ * - Per-agent memory isolation via X-User-Id header
+ * - Intelligent autoCapture with 3-layer filtering (noise → extract → quality gate)
+ * - Auto-recall: inject relevant memories before each agent turn
  *
- * Connects to agent-memory REST API server.
+ * GitHub: https://github.com/lomehong/agent-memory-plugin
+ * Backend: https://github.com/lomehong/agent-memory
  */
 
 import { Type } from "@sinclair/typebox";
