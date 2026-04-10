@@ -1,7 +1,7 @@
 {
   "name": "@lomehong/agent-memory-plugin",
   "version": "1.0.0",
-  "description": "OpenClaw memory plugin powered by agent-memory (self-hosted)",
+  "description": "OpenClaw memory plugin for self-hosted agent-memory system with auto-classification, agent isolation, and intelligent autoCapture",
   "main": "index.js",
   "type": "module",
   "scripts": {
