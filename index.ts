@@ -921,7 +921,7 @@ const agentMemoryPlugin = {
             .join("\n");
 
           api.logger.info(
-            `agent-memory-plugin: injecting ${result.count} memories for agent=${ctx.agentId} user=${userId}`,
+            `agent-memory-plugin: injecting ${result.count} memories for agent=${ctx.agentId} user=${cfg.userId}`,
           );
 
           return {
