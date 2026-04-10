@@ -113,11 +113,16 @@ interface HealthReport {
 class AgentMemoryClient {
   private baseUrl: string;
   private apiKey: string;
+  private _userId: string;
 
-  constructor(host: string, apiKey: string) {
+  constructor(host: string, apiKey: string, userId = "default") {
     this.baseUrl = host.replace(/\/+$/, "");
     this.apiKey = apiKey;
+    this._userId = userId;
   }
+
+  set userId(v: string) { this._userId = v; }
+  get userId() { return this._userId; }
 
   private async request<T>(
     method: string,
@@ -128,6 +133,7 @@ class AgentMemoryClient {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       "X-API-Key": this.apiKey,
+      "X-User-Id": this._userId,
     };
 
     const opts: RequestInit = { method, headers };
@@ -349,6 +355,28 @@ const agentMemoryPlugin = {
           `agent-memory-plugin: server health check failed: ${err}`,
         ),
       );
+
+    // Agent ID → userId mapping (matches 131 server config.yaml agents)
+    const AGENT_USER_MAP: Record<string, string> = {
+      main: "m10s",
+      dev: "devforge",
+      researcher: "sage",
+      secretary: "clara",
+      tester: "qbot",
+    };
+
+    let currentAgentId: string | undefined;
+
+    function resolveUserId(): string {
+      if (currentAgentId && AGENT_USER_MAP[currentAgentId]) return AGENT_USER_MAP[currentAgentId];
+      return cfg.userId;
+    }
+
+    // Track current agent and set userId on client
+    api.on("before_tool_call", async (_event, ctx) => {
+      currentAgentId = ctx.agentId;
+      client.userId = resolveUserId();
+    });
 
     // ========================================================================
     // Tools
@@ -869,7 +897,9 @@ const agentMemoryPlugin = {
 
     // Auto-recall: inject relevant memories before agent starts
     if (cfg.autoRecall) {
-      api.on("before_agent_start", async (event) => {
+      api.on("before_agent_start", async (event, ctx) => {
+        currentAgentId = ctx.agentId;
+        client.userId = resolveUserId();
         if (!event.prompt || event.prompt.length < 5) return;
 
         try {
@@ -887,7 +917,7 @@ const agentMemoryPlugin = {
             .join("\n");
 
           api.logger.info(
-            `agent-memory-plugin: injecting ${result.count} memories into context`,
+            `agent-memory-plugin: injecting ${result.count} memories for agent=${ctx.agentId} user=${userId}`,
           );
 
           return {
@@ -1049,7 +1079,9 @@ const agentMemoryPlugin = {
       }
 
       // --- Main Capture Logic ---
-      api.on("agent_end", async (event) => {
+      api.on("agent_end", async (event, ctx) => {
+        currentAgentId = ctx.agentId;
+        client.userId = resolveUserId();
         if (!event.success || !event.messages || event.messages.length === 0)
           return;
 
