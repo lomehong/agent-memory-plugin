@@ -38,13 +38,12 @@
     "type": "object",
     "additionalProperties": false,
     "properties": {
-      "host": { "type": "string" },
-      "apiKey": { "type": "string" },
-      "userId": { "type": "string" },
-      "autoRecall": { "type": "boolean" },
-      "autoCapture": { "type": "boolean" },
-      "topK": { "type": "number" }
-    },
-    "required": ["host", "apiKey"]
+      "host": { "type": "string", "default": "" },
+      "apiKey": { "type": "string", "default": "" },
+      "userId": { "type": "string", "default": "default" },
+      "autoRecall": { "type": "boolean", "default": true },
+      "autoCapture": { "type": "boolean", "default": true },
+      "topK": { "type": "number", "default": 5 }
+    }
   }
 }

@@ -241,14 +241,18 @@ class AgentMemoryClient {
 
 function parseConfig(raw: unknown): AgentMemoryConfig {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-    throw new Error("agent-memory-plugin config is required");
+    return { host: "", apiKey: "", userId: "default", autoRecall: true, autoCapture: false, topK: 5 };
   }
   const cfg = raw as Record<string, unknown>;
 
   const host = typeof cfg.host === "string" ? resolveEnv(cfg.host) : "";
   const apiKey = typeof cfg.apiKey === "string" ? resolveEnv(cfg.apiKey) : "";
-  if (!host) throw new Error("agent-memory-plugin: host is required");
-  if (!apiKey) throw new Error("agent-memory-plugin: apiKey is required");
+
+  // Graceful degradation: if host or apiKey is empty, disable autoCapture
+  // but still allow the plugin to register (avoids framework validation loops)
+  if (!host || !apiKey) {
+    return { host, apiKey, userId: "default", autoRecall: false, autoCapture: false, topK: 5 };
+  }
 
   return {
     host,
