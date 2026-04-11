@@ -12,7 +12,7 @@
     "apiKey": {
       "label": "API Key",
       "sensitive": true,
-      "placeholder": "dev-api-key-001",
+      "placeholder": "<your-api-key>",
       "help": "API key for authenticating with agent-memory server"
     },
     "userId": {
